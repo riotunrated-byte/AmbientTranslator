@@ -1,0 +1,45 @@
+name: Build Ambient Translator V3.3 Stability Update
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'AmbientTranslator_V3_3_Android.zip'
+      - '.github/workflows/build-v3-3.yml'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract Android project
+        run: unzip -o AmbientTranslator_V3_3_Android.zip
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Install SDK
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Bundle Spanish speech recognizer
+        shell: bash
+        run: |
+          curl --fail --location --retry 4 --connect-timeout 30 'https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip' --output "$RUNNER_TEMP/spanish-model.zip"
+          unzip -q "$RUNNER_TEMP/spanish-model.zip" -d "$RUNNER_TEMP"
+          test -s "$RUNNER_TEMP/vosk-model-small-es-0.42/am/final.mdl"
+          mkdir -p app/src/main/assets/models/es
+          cp -a "$RUNNER_TEMP/vosk-model-small-es-0.42/." app/src/main/assets/models/es/
+      - name: Compile APK
+        run: gradle --no-daemon assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AmbientTranslator-V3.3-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
